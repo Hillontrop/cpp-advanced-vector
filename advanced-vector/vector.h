@@ -170,11 +170,7 @@ public:
         else
         {
             // Копируем элементы из исходного вектора в текущий вектор
-            size_t min_size = std::min(size_, rhs.size_);
-            for (size_t i = 0; i < min_size; ++i)
-            {
-                data_[i] = rhs.data_[i];
-            }
+            std::copy(rhs.begin(), rhs.begin() + std::min(size_, rhs.size_), begin());  // + Цикл заменен на std::copy
 
             // Если исходный вектор имеет больше элементов, копируем оставшиеся элементы в свободное пространство
             if (size_ < rhs.size_)
@@ -199,8 +195,7 @@ public:
             return *this;
         }
 
-        data_.Swap(rhs.data_);
-        std::swap(size_, rhs.size_);
+        Swap(rhs);  // + Использован Swap (класса Vector)
 
         return *this;
     }
@@ -224,14 +219,9 @@ public:
         }
 
         RawMemory<T> new_data(new_capacity);
-        if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>)
-        {
-            std::uninitialized_move_n(begin(), size_, new_data.GetAddress());
-        }
-        else
-        {
-            std::uninitialized_copy_n(begin(), size_, new_data.GetAddress());
-        }
+
+        UninitializedCopyOrMove(begin(), size_, new_data.GetAddress());  // + Дополнительный метод для инициализации
+
         std::destroy_n(begin(), size_);
         data_.Swap(new_data);
     }
@@ -257,110 +247,18 @@ public:
 
     void PushBack(const T& value)
     {
-        if (size_ == data_.Capacity())
-        {
-            // Выделение новой памяти с увеличенной емкостью
-            size_t new_capacity = (size_ == 0) ? 1 : size_ * 2;
-            RawMemory<T> new_data(new_capacity);
-
-            if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>)
-            {
-                std::uninitialized_move_n(begin(), size_, new_data.GetAddress());
-            }
-            else
-            {
-                std::uninitialized_copy_n(begin(), size_, new_data.GetAddress());
-            }
-
-            // Конструируем копию нового элемента в конец вектора
-            new (new_data.GetAddress() + size_) T(value);
-
-            // Вызываем деструкторы старых элементов в старой области памяти
-            std::destroy_n(begin(), size_);
-
-            // Обновляем данные о памяти
-            data_.Swap(new_data);
-        }
-        else
-        {
-            // Конструируем копию элемента в конец вектора
-            new (begin() + size_) T(value);
-        }
-
-        ++size_;
+        Emplace(end(), value);
     }
-
 
     void PushBack(T&& value)
     {
-        if (size_ == data_.Capacity())
-        {
-            // Выделение новой памяти с увеличенной емкостью
-            size_t new_capacity = (size_ == 0) ? 1 : size_ * 2;
-            RawMemory<T> new_data(new_capacity);
-
-            if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>)
-            {
-                std::uninitialized_move_n(begin(), size_, new_data.GetAddress());
-            }
-            else
-            {
-                std::uninitialized_copy_n(begin(), size_, new_data.GetAddress());
-            }
-
-            // Конструируем перемещаемый элемент в конец вектора
-            new (new_data.GetAddress() + size_) T(std::move(value));
-
-            // Вызываем деструкторы старых элементов в старой области памяти
-            std::destroy_n(begin(), size_);
-
-            // Обновляем данные о памяти
-            data_.Swap(new_data);
-        }
-        else
-        {
-            // Конструируем перемещаемый элемент в конец вектора
-            new (begin() + size_) T(std::move(value));
-        }
-
-        ++size_;
+        Emplace(end(), std::move(value));
     }
 
     template <typename... Args>
     T& EmplaceBack(Args&&... args)
     {
-        if (size_ == data_.Capacity())
-        {
-            // Выделение новой памяти с увеличенной емкостью
-            size_t new_capacity = (size_ == 0) ? 1 : size_ * 2;
-            RawMemory<T> new_data(new_capacity);
-
-            if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>)
-            {
-                std::uninitialized_move_n(begin(), size_, new_data.GetAddress());
-            }
-            else
-            {
-                std::uninitialized_copy_n(begin(), size_, new_data.GetAddress());
-            }
-
-            // Конструируем новый элемент на месте в конце вектора с переданными аргументами
-            new (new_data.GetAddress() + size_) T(std::forward<Args>(args)...);
-
-            // Вызываем деструкторы старых элементов в старой области памяти
-            std::destroy_n(begin(), size_);
-
-            // Обновляем данные о памяти
-            data_.Swap(new_data);
-        }
-        else
-        {
-            // Конструируем новый элемент на месте в конце вектора с переданными аргументами
-            new (begin() + size_) T(std::forward<Args>(args)...);
-        }
-
-        ++size_;
-        return data_[size_ - 1];
+        return *(Emplace(end(), std::forward<Args>(args)...));
     }
 
     void PopBack() /* noexcept */
@@ -411,42 +309,12 @@ public:
 
         if (size_ == data_.Capacity())
         {
-            size_t new_capacity = (size_ == 0) ? 1 : size_ * 2;
-            RawMemory<T> new_data(new_capacity);
-
-            if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>)
-            {
-                std::uninitialized_move_n(data_.GetAddress(), index, new_data.GetAddress());
-                std::uninitialized_move_n(data_.GetAddress() + index, size_ - index, new_data.GetAddress() + index + 1);
-            }
-            else
-            {
-                std::uninitialized_copy_n(data_.GetAddress(), index, new_data.GetAddress());
-                std::uninitialized_copy_n(data_.GetAddress() + index, size_ - index, new_data.GetAddress() + index + 1);
-            }
-            new (new_data.GetAddress() + index) T(std::forward<Args>(args)...);
-
-            std::destroy_n(data_.GetAddress(), size_);
-            data_.Swap(new_data);
+            return EmplaceReallocate(index, std::forward<Args>(args)...);
         }
         else
         {
-            if (index < size_)
-            {
-                T temp(std::forward<Args>(args)...);
-                std::uninitialized_move_n(end() - 1, 1, end());
-                std::move_backward(begin() + index, end() - 1, end());
-
-                *(data_.GetAddress() + index) = std::move(temp);
-            }
-            else
-            {
-                new (end()) T(std::forward<Args>(args)...);
-            }
+            return EmplaceWithoutReallocate(index, std::forward<Args>(args)...);
         }
-
-        ++size_;
-        return begin() + index;
     }
 
 
@@ -505,4 +373,53 @@ public:
 private:
     RawMemory<T> data_;
     size_t size_ = 0;
+
+    template <typename... Args>
+    iterator EmplaceReallocate(size_t index, Args&&... args)
+    {
+        size_t new_capacity = (size_ == 0) ? 1 : size_ * 2;
+        RawMemory<T> new_data(new_capacity);
+
+        UninitializedCopyOrMove(begin(), index, new_data.GetAddress());  // + Дополнительный метод для инициализации
+        UninitializedCopyOrMove(begin() + index, size_ - index, new_data.GetAddress() + index + 1);  // + Дополнительный метод для инициализации
+
+        new (new_data.GetAddress() + index) T(std::forward<Args>(args)...);
+
+        std::destroy_n(data_.GetAddress(), size_);
+        data_.Swap(new_data);
+        ++size_;
+        return begin() + index;
+    }
+
+    template <typename... Args>
+    iterator EmplaceWithoutReallocate(size_t index, Args&&... args)
+    {
+        if (index < size_)
+        {
+            T temp(std::forward<Args>(args)...);
+            std::uninitialized_move_n(end() - 1, 1, end());
+            std::move_backward(begin() + index, end() - 1, end());
+
+            *(data_.GetAddress() + index) = std::move(temp);
+        }
+        else
+        {
+            new (end()) T(std::forward<Args>(args)...);
+        }
+        ++size_;
+        return begin() + index;
+    }
+
+    template <typename InputIt, typename OutputIt>
+    static void UninitializedCopyOrMove(InputIt first, size_t count, OutputIt result)
+    {
+        if constexpr (std::is_nothrow_move_constructible_v<T> || !std::is_copy_constructible_v<T>)
+        {
+            std::uninitialized_move_n(first, count, result);
+        }
+        else
+        {
+            std::uninitialized_copy_n(first, count, result);
+        }
+    }
 };
