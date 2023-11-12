@@ -4,7 +4,7 @@
 #include <new>
 #include <utility>
 #include <algorithm>
-#include <memory>   // uninitialized_value_construct_n, uninitialized_copy_n, destroy_n, uninitialized_move_n 
+#include <memory>   // uninitialized_value_construct_n, uninitialized_copy_n, destroy_n, uninitialized_move_n
 
 template <typename T>
 class RawMemory
@@ -18,15 +18,15 @@ public:
 
     RawMemory& operator=(const RawMemory& rhs) = delete;
 
-    // Ïåðåìåùàþùèé êîíñòðóêòîð (RawMemory move constructor)
+    // Перемещающий конструктор (RawMemory move constructor)
     RawMemory(RawMemory&& other) noexcept : buffer_(other.buffer_), capacity_(other.capacity_)
     {
-        // Îáíóëÿåì ðåñóðñû â other, ÷òîáû äåñòðóêòîð other íå îñâîáîäèë ïàìÿòü
+        // Обнуляем ресурсы в other, чтобы деструктор other не освободил память
         other.buffer_ = nullptr;
         other.capacity_ = 0;
     }
 
-    // Îïåðàòîð ïðèñâàèâàíèÿ ñ ïåðåíîñîì (RawMemory move assignment operator)
+    // Оператор присваивания с переносом (RawMemory move assignment operator)
     RawMemory& operator=(RawMemory&& rhs) noexcept
     {
         if (this != &rhs)
@@ -47,7 +47,7 @@ public:
 
     T* operator+(size_t offset) noexcept
     {
-        // Ðàçðåøàåòñÿ ïîëó÷àòü àäðåñ ÿ÷åéêè ïàìÿòè, ñëåäóþùåé çà ïîñëåäíèì ýëåìåíòîì ìàññèâà
+        // Разрешается получать адрес ячейки памяти, следующей за последним элементом массива
         assert(offset <= capacity_);
         return buffer_ + offset;
     }
@@ -90,13 +90,13 @@ public:
     }
 
 private:
-    // Âûäåëÿåò ñûðóþ ïàìÿòü ïîä n ýëåìåíòîâ è âîçâðàùàåò óêàçàòåëü íà íå¸
+    // Выделяет сырую память под n элементов и возвращает указатель на неё
     static T* Allocate(size_t n)
     {
         return n != 0 ? static_cast<T*>(operator new(n * sizeof(T))) : nullptr;
     }
 
-    // Îñâîáîæäàåò ñûðóþ ïàìÿòü, âûäåëåííóþ ðàíåå ïî àäðåñó buf ïðè ïîìîùè Allocate
+    // Освобождает сырую память, выделенную ранее по адресу buf при помощи Allocate
     static void Deallocate(T* buf) noexcept
     {
         operator delete(buf);
@@ -113,45 +113,45 @@ public:
     using iterator = T*;
     using const_iterator = const T*;
 
-    // Êîíñòðóêòîð ïî óìîë÷àíèþ. Èíèöèàëèçèðóåò âåêòîð íóëåâîãî ðàçìåðà è âìåñòèìîñòè.
-    // Íå âûáðàñûâàåò èñêëþ÷åíèé.
-    // Àëãîðèòìè÷åñêàÿ ñëîæíîñòü: O(1).
+    // Конструктор по умолчанию. Инициализирует вектор нулевого размера и вместимости.
+    // Не выбрасывает исключений.
+    // Алгоритмическая сложность: O(1).
     Vector() = default;
 
-    // Êîíñòðóêòîð, êîòîðûé ñîçäà¸ò âåêòîð çàäàííîãî ðàçìåðà.
-    // Âìåñòèìîñòü ñîçäàííîãî âåêòîðà ðàâíà åãî ðàçìåðó,
-    // à ýëåìåíòû ïðîèíèöèàëèçèðîâàíû çíà÷åíèåì ïî óìîë÷àíèþ äëÿ òèïà T.
-    // Àëãîðèòìè÷åñêàÿ ñëîæíîñòü : O(ðàçìåð âåêòîðà).
+    // Конструктор, который создаёт вектор заданного размера.
+    // Вместимость созданного вектора равна его размеру,
+    // а элементы проинициализированы значением по умолчанию для типа T.
+    // Алгоритмическая сложность : O(размер вектора).
     explicit Vector(size_t size) : data_(size), size_(size)
     {
         std::uninitialized_value_construct_n(begin(), size);
     }
 
-    // Êîïèðóþùèé êîíñòðóêòîð. Ñîçäà¸ò êîïèþ ýëåìåíòîâ èñõîäíîãî âåêòîðà.
-    // Èìååò âìåñòèìîñòü, ðàâíóþ ðàçìåðó èñõîäíîãî âåêòîðà,
-    // òî åñòü âûäåëÿåò ïàìÿòü áåç çàïàñà.
-    // Àëãîðèòìè÷åñêàÿ ñëîæíîñòü: O(ðàçìåð èñõîäíîãî âåêòîðà).
+    // Копирующий конструктор. Создаёт копию элементов исходного вектора.
+    // Имеет вместимость, равную размеру исходного вектора,
+    // то есть выделяет память без запаса.
+    // Алгоритмическая сложность: O(размер исходного вектора).
     Vector(const Vector& other) : data_(other.size_), size_(other.size_)
     {
         std::uninitialized_copy_n(other.data_.GetAddress(), other.size_, begin());
     }
 
-    // Äåñòðóêòîð.Ðàçðóøàåò ñîäåðæàùèåñÿ â âåêòîðå ýëåìåíòû è
-    // îñâîáîæäàåò çàíèìàåìóþ èìè ïàìÿòü.
-    // Àëãîðèòìè÷åñêàÿ ñëîæíîñòü : O(ðàçìåð âåêòîðà).
+    // Деструктор.Разрушает содержащиеся в векторе элементы и
+    // освобождает занимаемую ими память.
+    // Алгоритмическая сложность : O(размер вектора).
     ~Vector()
     {
         std::destroy_n(begin(), size_);
     }
 
-    // Êîíñòðóêòîð ïåðåìåùåíèÿ (Vector move constructor)
+    // Конструктор перемещения (Vector move constructor)
     Vector(Vector&& other) noexcept : data_(std::move(other.data_)), size_(other.size_)
     {
-        // Îáíóëÿåì ðàçìåð ó èñõîäíîãî îáúåêòà, ÷òîáû äåñòðóêòîð íå îñâîáîäèë ïàìÿòü
+        // Обнуляем размер у исходного объекта, чтобы деструктор не освободил память
         other.size_ = 0;
     }
 
-    // Îïåðàòîð ïåðåìåùåíèÿ(Vector move assignment operator)
+    // Оператор перемещения(Vector move assignment operator)
     Vector& operator=(const Vector& rhs)
     {
         if (this == &rhs)
@@ -161,23 +161,23 @@ public:
 
         if (data_.Capacity() < rhs.size_)
         {
-            // Âûäåëÿåì íîâóþ ïàìÿòü, åñëè òåêóùåé åìêîñòè íåäîñòàòî÷íî
+            // Выделяем новую память, если текущей емкости недостаточно
             RawMemory<T> new_data(rhs.size_);
             std::uninitialized_copy_n(rhs.data_.GetAddress(), rhs.size_, new_data.GetAddress());
-            std::destroy_n(begin(), size_); // Óíè÷òîæàåì ñòàðûå äàííûå
-            data_.Swap(new_data); // Ïîìåíÿåì ìåñòàìè áóôåðû, ÷òîáû èñïîëüçîâàòü íîâûå äàííûå
+            std::destroy_n(begin(), size_); // Уничтожаем старые данные
+            data_.Swap(new_data); // Поменяем местами буферы, чтобы использовать новые данные
         }
         else
         {
-            // Êîïèðóåì ýëåìåíòû èç èñõîäíîãî âåêòîðà â òåêóùèé âåêòîð
-            std::copy(rhs.begin(), rhs.begin() + std::min(size_, rhs.size_), begin());  // + Öèêë çàìåíåí íà std::copy
+            // Копируем элементы из исходного вектора в текущий вектор
+            std::copy(rhs.begin(), rhs.begin() + std::min(size_, rhs.size_), begin());  // + Цикл заменен на std::copy
 
-            // Åñëè èñõîäíûé âåêòîð èìååò áîëüøå ýëåìåíòîâ, êîïèðóåì îñòàâøèåñÿ ýëåìåíòû â ñâîáîäíîå ïðîñòðàíñòâî
+            // Если исходный вектор имеет больше элементов, копируем оставшиеся элементы в свободное пространство
             if (size_ < rhs.size_)
             {
                 std::uninitialized_copy(rhs.data_.GetAddress() + size_, rhs.data_.GetAddress() + rhs.size_, begin() + size_);
             }
-            // Åñëè â èñõîäíîì âåêòîðå ìåíüøå ýëåìåíòîâ, óíè÷òîæàåì ëèøíèå ýëåìåíòû â ïðèíèìàþùåì âåêòîðå
+            // Если в исходном векторе меньше элементов, уничтожаем лишние элементы в принимающем векторе
             else if (size_ > rhs.size_)
             {
                 std::destroy_n(begin() + rhs.size_, size_ - rhs.size_);
@@ -195,22 +195,22 @@ public:
             return *this;
         }
 
-        Swap(rhs);  // + Èñïîëüçîâàí Swap (êëàññà Vector)
+        Swap(rhs);  // + Использован Swap (класса Vector)
 
         return *this;
     }
 
-    // Îáìåíèâàòü ñîäåðæèìîå äâóõ îáúåêòîâ Vector
+    // Обменивать содержимое двух объектов Vector
     void Swap(Vector& other) noexcept
     {
         data_.Swap(other.data_);
         std::swap(size_, other.size_);
     }
 
-    // Ìåòîä void Reserve(size_t capacity).Ðåçåðâèðóåò äîñòàòî÷íî ìåñòà,
-    // ÷òîáû âìåñòèòü êîëè÷åñòâî ýëåìåíòîâ, ðàâíîå capacity.
-    // Åñëè íîâàÿ âìåñòèìîñòü íå ïðåâûøàåò òåêóùóþ, ìåòîä íå äåëàåò íè÷åãî.
-    // Àëãîðèòìè÷åñêàÿ ñëîæíîñòü : O(ðàçìåð âåêòîðà).
+    // Метод void Reserve(size_t capacity).Резервирует достаточно места,
+    // чтобы вместить количество элементов, равное capacity.
+    // Если новая вместимость не превышает текущую, метод не делает ничего.
+    // Алгоритмическая сложность : O(размер вектора).
     void Reserve(size_t new_capacity)
     {
         if (new_capacity <= data_.Capacity())
@@ -220,7 +220,7 @@ public:
 
         RawMemory<T> new_data(new_capacity);
 
-        UninitializedCopyOrMove(begin(), size_, new_data.GetAddress());  // + Äîïîëíèòåëüíûé ìåòîä äëÿ èíèöèàëèçàöèè
+        UninitializedCopyOrMove(begin(), size_, new_data.GetAddress());  // + Дополнительный метод для инициализации
 
         std::destroy_n(begin(), size_);
         data_.Swap(new_data);
@@ -380,8 +380,8 @@ private:
         size_t new_capacity = (size_ == 0) ? 1 : size_ * 2;
         RawMemory<T> new_data(new_capacity);
 
-        UninitializedCopyOrMove(begin(), index, new_data.GetAddress());  // + Äîïîëíèòåëüíûé ìåòîä äëÿ èíèöèàëèçàöèè
-        UninitializedCopyOrMove(begin() + index, size_ - index, new_data.GetAddress() + index + 1);  // + Äîïîëíèòåëüíûé ìåòîä äëÿ èíèöèàëèçàöèè
+        UninitializedCopyOrMove(begin(), index, new_data.GetAddress());  // + Дополнительный метод для инициализации
+        UninitializedCopyOrMove(begin() + index, size_ - index, new_data.GetAddress() + index + 1);  // + Дополнительный метод для инициализации
 
         new (new_data.GetAddress() + index) T(std::forward<Args>(args)...);
 
